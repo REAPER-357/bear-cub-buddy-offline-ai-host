@@ -1,0 +1,19 @@
+# Operating System files
+.DS_Store
+Thumbs.db
+*.swp
+
+# Node / Capacitor dependencies & build outputs
+node_modules/
+dist/
+build/
+*.log
+
+# Native IDE metadata (let Capacitor generate these dynamically)
+.idea/
+.vscode/
+*.iml
+
+# Environment & local tokens
+.env
+.env.local
