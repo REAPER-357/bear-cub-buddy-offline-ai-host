@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Local LLM</title>
+<style>
+:root{--bg:#000;--panel:#121214;--panel2:#1b1b1f;--line:#27272a;--text:#f1f5f9;--mute:#a1a1aa;--acc:#10b981;--danger:#ef4444}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Roboto,sans-serif}
+body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top)}
+.ico{display:inline-block;width:20px;height:20px;background:currentColor;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat;vertical-align:middle}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+header h1{font-size:15px;margin:0;color:var(--acc);letter-spacing:.04em}
+header .sub{font-size:11px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw}
+header .sp{flex:1}
+main{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0;overflow-y:auto;padding:14px;display:none}
+.view.on{display:block}
+#v-chat.on{display:flex;flex-direction:column;padding:0}
+nav{display:flex;border-top:1px solid var(--line);background:#050505;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;border:0;color:var(--mute);padding:9px 0 7px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button.on{color:var(--acc)}
+button{font:inherit;color:inherit}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:inline-flex;align-items:center;gap:6px}
+.btn.acc{background:var(--acc);border-color:var(--acc);color:#04150e;font-weight:600}
+.btn.danger{color:var(--danger)}
+.btn:disabled{opacity:.4}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:13px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+input,textarea,select{width:100%;background:#000;border:1px solid var(--line);border-radius:10px;padding:9px 10px;color:var(--text);font:inherit}
+input:focus,textarea:focus{outline:none;border-color:var(--acc)}
+label{display:block;font-size:12px;color:var(--mute);margin:10px 0 4px}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}.row>.fit{flex:none}
+.mute{color:var(--mute);font-size:12px}
+/* chat */
+#msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:88%;padding:9px 12px;border-radius:16px;white-space:pre-wrap;word-wrap:break-word}
+.msg.user{align-self:flex-end;background:#06281d;border:1px solid #0b4a35}
+.msg.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+.empty{margin:auto;text-align:center;color:var(--mute);padding:20px}
+#bar{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);background:#050505;align-items:flex-end}
+#bar textarea{resize:none;max-height:120px;border-radius:16px}
+#bar .btn{width:44px;height:44px;border-radius:50%;justify-content:center;padding:0;flex:none}
+/* models */
+.model{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+.model:first-child{border-top:0}
+.model .n{flex:1;min-width:0}
+.model .n b{display:block;overflow-wrap:anywhere;font-weight:600}
+.model.loaded b{color:var(--acc)}
+.bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:var(--acc)}
+#toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#27272a;padding:9px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;z-index:50;max-width:90vw;text-align:center}
+#toast.on{opacity:1}
+#drawer{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:40}
+#drawer.on{display:block}
+#drawer .p{position:absolute;left:0;top:0;bottom:0;width:80%;max-width:320px;background:var(--panel);padding:14px;overflow-y:auto}
+.sess{display:flex;gap:6px;align-items:center;padding:9px 8px;border-radius:10px}
+.sess.on{background:var(--panel2)}
+.sess span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess button{background:none;border:0;color:var(--mute);padding:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="btn" id="menuBtn" style="padding:8px"><i class="ico" data-ico="message-square"></i></button>
+  <div style="min-width:0">
+    <h1>LOCAL LLM</h1>
+    <div class="sub" id="status">No model loaded</div>
+  </div>
+  <div class="sp"></div>
+  <button class="btn" id="newBtn"><i class="ico" data-ico="plus"></i> New</button>
+</header>
+
+<main>
+  <section class="view on" id="v-chat">
+    <div id="msgs"></div>
+    <div id="bar">
+      <textarea id="input" rows="1" placeholder="Type a message..."></textarea>
+      <button class="btn acc" id="sendBtn"><i class="ico" data-ico="send"></i></button>
+    </div>
+  </section>
+
+  <section class="view" id="v-models">
+    <div class="card">
+      <h3>Models folder</h3>
+      <div id="folderPath" class="mute" style="color:var(--text);overflow-wrap:anywhere"></div>
+      <div class="mute" style="margin-top:6px">Pick any folder once. The app reads the .gguf files there in place (no copying). Add, swap or delete files with your file manager, or use Download below.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="scanBtn"><i class="ico" data-ico="refresh-cw"></i> Refresh</button>
+        <button class="btn" id="pickBtn"><i class="ico" data-ico="folder-open"></i> <span id="pickLbl">Connect folder</span></button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Models</h3>
+      <div id="modelList"></div>
+    </div>
+    <div class="card">
+      <h3>Download from Hugging Face</h3>
+      <label>File link (.gguf)</label>
+      <input id="dlUrl" placeholder="https://huggingface.co/.../resolve/main/model.gguf" autocapitalize="off" autocorrect="off">
+      <label>Access token (only for gated models)</label>
+      <input id="dlTok" type="password" placeholder="optional">
+      <div class="row" style="margin-top:10px"><button class="btn acc" id="dlBtn"><i class="ico" data-ico="download"></i> Download</button><button class="btn fit" id="dlCancel" style="display:none">Cancel</button></div>
+      <div class="bar" id="dlBarWrap" style="display:none"><i id="dlBar"></i></div>
+      <div class="mute" id="dlInfo" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-settings">
+    <div class="card">
+      <h3>System prompt</h3>
+      <textarea id="s_system" rows="4"></textarea>
+      <div class="row" style="margin-top:8px">
+        <select id="presetSel"><option value="">Saved prompts...</option></select>
+        <button class="btn fit" id="presetSave">Save</button>
+        <button class="btn fit danger" id="presetDel"><i class="ico" data-ico="trash-2"></i></button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Generation</h3>
+      <label>Temperature <span id="o_temp"></span></label><input type="range" id="s_temp" min="0" max="2" step="0.05">
+      <label>Top K <span id="o_topK"></span></label><input type="range" id="s_topK" min="0" max="100" step="1">
+      <label>Top P <span id="o_topP"></span></label><input type="range" id="s_topP" min="0" max="1" step="0.01">
+      <label>Min P <span id="o_minP"></span></label><input type="range" id="s_minP" min="0" max="0.5" step="0.01">
+      <label>Repeat penalty <span id="o_repeat"></span></label><input type="range" id="s_repeat" min="1" max="2" step="0.01">
+      <label>Max tokens per reply</label><input type="number" id="s_maxTokens" min="16" step="16">
+      <label>Seed (-1 = random)</label><input type="number" id="s_seed">
+    </div>
+    <div class="card">
+      <h3>Model loading <span class="mute">(applies on next load)</span></h3>
+      <label>Context size</label><input type="number" id="s_nCtx" min="512" step="256">
+      <label>CPU threads</label><input type="number" id="s_threads" min="1" max="16">
+      <div class="row" style="margin-top:10px"><button class="btn" id="resetBtn">Reset to defaults</button></div>
+    </div>
+    <div class="card">
+      <h3>Engine</h3>
+      <div class="mute" id="engineInfo"></div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button class="on" data-tab="chat"><i class="ico" data-ico="message-square"></i>Chat</button>
+  <button data-tab="models"><i class="ico" data-ico="box"></i>Models</button>
+  <button data-tab="settings"><i class="ico" data-ico="settings"></i>Settings</button>
+</nav>
+
+<div id="drawer"><div class="p">
+  <div class="row" style="margin-bottom:10px"><b>Chats</b><button class="btn fit" id="drawerClose"><i class="ico" data-ico="x"></i></button></div>
+  <div id="sessList"></div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+/* ============ helpers ============ */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const toast = (m) => { const t=$('#toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('on'),2600); };
+const load = (k,d) => { try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch{ return d; } };
+const save = (k,v) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} };
+const gb = b => b>=1e9 ? (b/1e9).toFixed(2)+' GB' : (b/1e6).toFixed(0)+' MB';
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+$$('[data-ico]').forEach(e => e.style.setProperty('--i', `url(assets/icons/${e.dataset.ico}.svg)`));
+const icoHtml = n => `<i class="ico" style="--i:url(assets/icons/${n}.svg)"></i>`;
+
+/* ============ state ============ */
+const DEFAULTS = {nCtx:4096,threads:4,temp:0.7,topK:40,topP:0.95,minP:0.05,repeat:1.1,maxTokens:1024,seed:-1,
+  system:'You are a helpful assistant.'};
+const S = {
+  settings: Object.assign({}, DEFAULTS, load('llm.settings',{})),
+  presets: load('llm.presets',[]),
+  sessions: load('llm.sessions',[]),
+  cur: null, models: [], loaded: null, busy: false, demoFiles: {}
+};
+const persist = () => { save('llm.settings',S.settings); save('llm.presets',S.presets); save('llm.sessions',S.sessions); };
+
+/* ============ platform / engine ============ */
+const Cap = window.Capacitor;
+const onDevice = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+const Bridge = onDevice ? Cap.Plugins.LlamaBridge : null;   // native plugin: folder access + llama.cpp (see README)
+const isNative = !!Bridge;
+
+/* Engine interface: load(path,settings) / generate(messages,params,onToken) / stop() / unload() */
+const NativeEngine = {
+  name:'llama.cpp (native)',
+  async load(m,s){ await Bridge.load({uri:m.uri, n_ctx:s.nCtx, n_threads:s.threads}); },
+  async generate(messages,p,onToken){
+    const h = await Bridge.addListener('token', e => onToken(e.token));
+    try { await Bridge.generate({messages, temperature:p.temp, top_k:p.topK, top_p:p.topP, min_p:p.minP,
+          repeat_penalty:p.repeat, n_predict:p.maxTokens, seed:p.seed}); }
+    finally { h.remove(); }
+  },
+  stop(){ Bridge.stop(); },
+  async unload(){ await Bridge.unload(); }
+};
+/* Demo engine: lets you test the whole UI in a desktop browser. No real model. */
+const DemoEngine = {
+  name:'Demo (no real model - UI test only)', aborted:false,
+  async load(){ await new Promise(r=>setTimeout(r,500)); },
+  async generate(messages,p,onToken){
+    this.aborted=false;
+    const words = ('This is a demo reply. In the APK, tokens stream from your GGUF model through llama.cpp. '
+      +'Last message was: '+messages[messages.length-1].content).split(' ');
+    for(const w of words){ if(this.aborted) return; onToken(w+' '); await new Promise(r=>setTimeout(r,60)); }
+  },
+  stop(){ this.aborted=true; },
+  async unload(){}
+};
+const engine = isNative ? NativeEngine : DemoEngine;
+
+/* ============ models folder (connected by you, read in place) ============ */
+async function scanModels(){
+  if(!isNative){
+    S.folder = null;
+    S.models = Object.values(S.demoFiles).map(f=>({name:f.name,size:f.size,uri:f.name}));
+    renderModels(); return;
+  }
+  try{ const f = await Bridge.getFolder(); S.folder = f.connected ? f.name : null; }catch{ S.folder = null; }
+  $('#folderPath').textContent = S.folder ? S.folder : 'No folder connected';
+  S.models = [];
+  if(S.folder){
+    try{ S.models = (await Bridge.listModels()).models || []; }
+    catch(e){ toast('Cannot read folder: '+(e.message||e)); }
+  }
+  renderModels();
+}
+async function connectFolder(){
+  if(!isNative){ addDemoFile(); return; }
+  try{ await Bridge.pickFolder(); toast('Folder connected'); }catch{ toast('No folder chosen'); }
+  scanModels();
+}
+function addDemoFile(){
+  const i = document.createElement('input'); i.type='file'; i.accept='.gguf';
+  i.onchange = () => { const f=i.files[0]; if(!f) return; S.demoFiles[f.name]=f; scanModels(); };
+  i.click();
+}
+async function loadModel(m){
+  if(S.busy || S.loading) return;
+  S.loading = true; setStatus('Loading '+m.name+'...');
+  try{
+    if(S.loaded){ await engine.unload(); S.loaded = null; }
+    await engine.load(m,S.settings);
+    S.loaded = m; toast('Model ready'); setTab('chat');
+  }catch(e){ S.loaded = null; toast('Load failed: '+(e.message||e)); }
+  S.loading = false; setStatus(); renderModels();
+}
+async function unloadModel(){ try{ await engine.unload(); }catch{} S.loaded=null; setStatus(); renderModels(); }
+async function deleteModel(m){
+  if(!confirm('Delete '+m.name+' from your folder?')) return;
+  if(S.loaded && S.loaded.name===m.name) await unloadModel();
+  try{
+    if(isNative) await Bridge.deleteModel({uri:m.uri}); else delete S.demoFiles[m.name];
+    toast('Deleted');
+  }catch(e){ toast('Delete failed: '+(e.message||e)); }
+  scanModels();
+}
+function renderModels(){
+  const el = $('#modelList');
+  if(!S.models.length){
+    el.innerHTML = '<div class="mute">'+(isNative && !S.folder
+      ? 'Tap "Connect folder" and choose the folder that holds your .gguf files.'
+      : 'No .gguf files found in the folder.')+'</div>';
+    return;
+  }
+  el.innerHTML = '';
+  S.models.forEach(m=>{
+    const on = S.loaded && S.loaded.name===m.name;
+    const d = document.createElement('div'); d.className='model'+(on?' loaded':'');
+    d.innerHTML = `<div class="n"><b>${esc(m.name)}</b><span class="mute">${m.size?gb(m.size):''}${on?' · loaded':''}</span></div>`;
+    const b1 = document.createElement('button'); b1.className='btn '+(on?'':'acc');
+    b1.innerHTML = on ? icoHtml('power')+' Unload' : icoHtml('play')+' Load';
+    b1.onclick = () => on ? unloadModel() : loadModel(m);
+    const b2 = document.createElement('button'); b2.className='btn danger'; b2.innerHTML = icoHtml('trash-2'); b2.onclick = () => deleteModel(m);
+    d.append(b1,b2); el.append(d);
+  });
+}
+
+/* ============ download (Hugging Face -> straight into your folder) ============ */
+async function download(){
+  let url = $('#dlUrl').value.trim();
+  if(!/^https:\/\/(www\.)?huggingface\.co\//.test(url)){ toast('Use a https://huggingface.co/... link'); return; }
+  url = url.replace('/blob/','/resolve/').split('?')[0];
+  const name = decodeURIComponent(url.split('/').pop());
+  if(!/\.gguf$/i.test(name)){ toast('Link must end in .gguf'); return; }
+  if(!isNative){ toast('Downloading works inside the APK only'); return; }
+  if(!S.folder){ toast('Connect a folder first'); return; }
+  const tok = $('#dlTok').value.trim();
+  $('#dlBarWrap').style.display='block'; $('#dlBar').style.width='0';
+  $('#dlBtn').disabled=true; $('#dlCancel').style.display='';
+  $('#dlInfo').textContent = 'Starting '+name+'...';
+  const h = await Bridge.addListener('download', p => {
+    if(p.total>0){ $('#dlBar').style.width=(p.bytes/p.total*100).toFixed(1)+'%';
+      $('#dlInfo').textContent = `${name}: ${gb(p.bytes)} / ${gb(p.total)}`; }
+    else $('#dlInfo').textContent = `${name}: ${gb(p.bytes)}`;
+  });
+  try{
+    await Bridge.downloadModel({url,name,token:tok});
+    $('#dlInfo').textContent='Done: '+name; toast('Download complete');
+  }catch(e){ $('#dlInfo').textContent='Failed: '+(e.message||e); }
+  h.remove(); $('#dlBtn').disabled=false; $('#dlCancel').style.display='none'; scanModels();
+}
+function cancelDownload(){ if(isNative) Bridge.cancelDownload(); }
+
+/* ============ chat ============ */
+function curSession(){
+  let s = S.sessions.find(x=>x.id===S.cur);
+  if(!s){ s={id:uid(),title:'New chat',messages:[]}; S.sessions.unshift(s); S.cur=s.id; }
+  return s;
+}
+function renderChat(){
+  const box = $('#msgs'); const s = S.sessions.find(x=>x.id===S.cur);
+  box.innerHTML = '';
+  if(!s || !s.messages.length){
+    box.innerHTML = `<div class="empty"><b>${S.loaded?'Ready':'No model loaded'}</b><br>${S.loaded?'Type a message to start.':'Open the Models tab, load a .gguf from your folder.'}</div>`;
+    return;
+  }
+  s.messages.forEach(m=>{ const d=document.createElement('div'); d.className='msg '+m.role; d.textContent=m.content; box.append(d); });
+  box.scrollTop = box.scrollHeight;
+}
+async function send(){
+  if(S.busy){ engine.stop(); return; }
+  const txt = $('#input').value.trim(); if(!txt) return;
+  if(!S.loaded){ toast('Load a model first'); setTab('models'); return; }
+  const s = curSession();
+  if(!s.messages.length) s.title = txt.slice(0,40);
+  s.messages.push({role:'user',content:txt});
+  const a = {role:'assistant',content:''}; s.messages.push(a);
+  $('#input').value=''; autosize(); renderChat();
+  const el = $('#msgs').lastElementChild;
+  S.busy=true; setSendIcon();
+  const history = fitHistory([{role:'system',content:S.settings.system}, ...s.messages.slice(0,-1)]);
+  try{
+    await engine.generate(history, S.settings, tok=>{ a.content+=tok; el.textContent=a.content; $('#msgs').scrollTop=$('#msgs').scrollHeight; });
+  }catch(e){ a.content += (a.content?'\n':'')+'[error: '+(e.message||e)+']'; el.textContent=a.content; }
+  S.busy=false; setSendIcon(); persist(); renderSessions();
+}
+/* Drop the oldest turns if the conversation would overflow the context (rough estimate: 3 chars per token). */
+function fitHistory(h){
+  const budget = Math.max(256, S.settings.nCtx - S.settings.maxTokens - 64) * 3;
+  const size = a => a.reduce((n,m)=>n+m.content.length+16,0);
+  const out = h.slice();
+  while(out.length>2 && size(out)>budget) out.splice(1,1);
+  return out;
+}
+function setSendIcon(){ $('#sendBtn').innerHTML = icoHtml(S.busy?'square':'send'); }
+function autosize(){ const t=$('#input'); t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,120)+'px'; }
+function renderSessions(){
+  const el = $('#sessList'); el.innerHTML='';
+  S.sessions.forEach(s=>{
+    const d=document.createElement('div'); d.className='sess'+(s.id===S.cur?' on':'');
+    d.innerHTML=`<span>${esc(s.title)}</span>`;
+    d.onclick=()=>{ if(S.busy) return; S.cur=s.id; renderChat(); renderSessions(); $('#drawer').classList.remove('on'); };
+    const x=document.createElement('button'); x.innerHTML=icoHtml('trash-2');
+    x.onclick=e=>{ e.stopPropagation(); if(S.busy) return; S.sessions=S.sessions.filter(q=>q.id!==s.id); if(S.cur===s.id) S.cur=null; persist(); renderChat(); renderSessions(); };
+    d.append(x); el.append(d);
+  });
+}
+function newChat(){ if(S.busy) return; S.cur=null; setTab('chat'); renderChat(); renderSessions(); }
+
+/* ============ settings ============ */
+const RANGES = ['temp','topK','topP','minP','repeat'];
+const NUMS = ['maxTokens','seed','nCtx','threads'];
+function bindSettings(){
+  $('#s_system').value = S.settings.system;
+  $('#s_system').oninput = e => { S.settings.system=e.target.value; persist(); };
+  RANGES.forEach(k=>{ const i=$('#s_'+k); i.value=S.settings[k]; $('#o_'+k).textContent=S.settings[k];
+    i.oninput=()=>{ S.settings[k]=parseFloat(i.value); $('#o_'+k).textContent=i.value; persist(); }; });
+  NUMS.forEach(k=>{ const i=$('#s_'+k); i.value=S.settings[k];
+    i.onchange=()=>{ const v=parseInt(i.value,10); if(!isNaN(v)){ S.settings[k]=v; persist(); } }; });
+  renderPresets();
+}
+function renderPresets(){
+  const sel=$('#presetSel'); sel.innerHTML='<option value="">Saved prompts...</option>';
+  S.presets.forEach((p,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=p.name; sel.append(o); });
+}
+$('#presetSel').onchange = e => { const p=S.presets[e.target.value]; if(p){ S.settings.system=p.text; $('#s_system').value=p.text; persist(); } };
+$('#presetSave').onclick = () => { const n=prompt('Name for this prompt?'); if(!n) return; S.presets.push({name:n,text:$('#s_system').value}); persist(); renderPresets(); toast('Saved'); };
+$('#presetDel').onclick = () => { const i=$('#presetSel').value; if(i==='') return; S.presets.splice(i,1); persist(); renderPresets(); };
+$('#resetBtn').onclick = () => { if(!confirm('Reset all settings?')) return; S.settings=Object.assign({},DEFAULTS); persist(); bindSettings(); };
+
+/* ============ UI wiring ============ */
+function setStatus(t){ $('#status').textContent = t || (S.loaded ? S.loaded.name : 'No model loaded'); }
+function setTab(t){
+  $$('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+t));
+  $$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  if(t==='chat') renderChat();
+}
+$$('nav button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+$('#sendBtn').onclick = send;
+$('#input').oninput = autosize;
+$('#newBtn').onclick = newChat;
+$('#menuBtn').onclick = () => { renderSessions(); $('#drawer').classList.add('on'); };
+$('#drawerClose').onclick = () => $('#drawer').classList.remove('on');
+$('#drawer').onclick = e => { if(e.target.id==='drawer') $('#drawer').classList.remove('on'); };
+$('#scanBtn').onclick = scanModels;
+$('#pickBtn').onclick = connectFolder;
+$('#dlCancel').onclick = cancelDownload;
+$('#dlBtn').onclick = download;
+
+/* ============ init ============ */
+$('#folderPath').textContent = isNative ? '...' : 'Browser demo mode (no real folder)';
+if(!isNative) $('#pickLbl').textContent = 'Add file (demo)';
+$('#engineInfo').textContent = engine.name + (onDevice && !Bridge ? ' - LlamaBridge plugin not found in this APK' : '');
+S.cur = S.sessions.length ? S.sessions[0].id : null;
+bindSettings(); setSendIcon(); setStatus(); renderChat(); scanModels();
+</script>
+</body>
+</html>

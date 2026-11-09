@@ -1,0 +1,18 @@
+{
+  "name": "bear-cub-offline-ai-hosting-app",
+  "version": "1.0.0",
+  "description": "The app is a host. Models are NOT in the APK. You connect a folder once and the app reads the .gguf files there in place (no copying). Swap, add or delete files with any file manager, or use Models > Download.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.6.0"
+  }
+}
